@@ -1,0 +1,8 @@
+.env
+__pycache__/
+*.py[cod]
+*.log
+access_log
+error_log
+logApi.txt
+api.db
