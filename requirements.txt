@@ -1,5 +1,6 @@
 fastapi==0.141.1
 gunicorn==26.2.0
+uvicorn==0.52.4
 PyMySQL==1.2.0
 SQLAlchemy==2.0.52
 cryptography==50.0.1
