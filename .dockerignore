@@ -1,0 +1,9 @@
+.git
+.env
+__pycache__/
+*.py[cod]
+*.log
+access_log
+error_log
+api.db
+API_charly.zip
