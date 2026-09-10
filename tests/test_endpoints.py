@@ -59,19 +59,19 @@ class EndpointsTest(unittest.TestCase):
 
     def test_get_token(self):
         status, data = self.call('POST','/api/ObtieneToken/',params={'_IdUsuario':'test','_contrasena':'test-password'})
-        self.assertEqual(status,201)
-        self.assertEqual(data,'test-token')
+        self.assertEqual(status,200)
+        self.assertEqual(data,{'Token':'test-token'})
 
     def test_events_grouping_json_and_day_boundary(self):
-        status, data = self.call('GET','/api/obtieneEventos/',params={'_IdUsuario':'test','_token':'test-token','_fecha':'2026-09-01'})
-        self.assertEqual(status,201)
+        status, data = self.call('GET','/api/obtieneEventos/',params={'_token':'test-token','_fecha':'2026-09-01'})
+        self.assertEqual(status,200)
         self.assertEqual(len(data),1)
         self.assertEqual(data[0]['cantidad'],2)
         self.assertEqual(data[0]['hora'],10)
 
     def test_no_events(self):
-        status,data=self.call('GET','/api/obtieneEventos/',params={'_IdUsuario':'test','_token':'test-token','_fecha':'2020-01-01'})
-        self.assertEqual((status,data),(201,[]))
+        status,data=self.call('GET','/api/obtieneEventos/',params={'_token':'test-token','_fecha':'2020-01-01'})
+        self.assertEqual((status,data),(200,[]))
 
     def test_update_token_persists(self):
         response=asyncio.run(router.actualiza_token(id_usuario='test',contrasena='test-password'))
@@ -81,7 +81,7 @@ class EndpointsTest(unittest.TestCase):
             token=conn.execute(usuarios_c.select()).mappings().one()['Token']
         self.assertIsInstance(token,str)
         self.assertNotEqual(token,'test-token')
-        self.assertEqual(self.call('POST','/api/ObtieneToken/',params={'_IdUsuario':'test','_contrasena':'test-password'}),(201,token))
+        self.assertEqual(self.call('POST','/api/ObtieneToken/',params={'_IdUsuario':'test','_contrasena':'test-password'}),(200,{'Token':token}))
 
     def test_update_password_persists(self):
         status,_=self.call('PUT','/api/actualizaContrasena/',params={'_IdUsuario':'test','_contrasenaActual':'test-password','_contrasenaNueva':'new-password'})
@@ -93,8 +93,8 @@ class EndpointsTest(unittest.TestCase):
     def test_errors(self):
         cases=[('POST','/api/ObtieneToken/',{'_IdUsuario':'missing','_contrasena':'bad'},404),
                ('POST','/api/ObtieneToken/',{'_IdUsuario':'test','_contrasena':'bad'},401),
-               ('GET','/api/obtieneEventos/',{'_IdUsuario':'test','_token':'bad','_fecha':'2026-09-01'},402),
-               ('GET','/api/obtieneEventos/',{'_IdUsuario':'test','_token':'test-token','_fecha':'bad'},405)]
+               ('GET','/api/obtieneEventos/',{'_token':'bad','_fecha':'2026-09-01'},402),
+               ('GET','/api/obtieneEventos/',{'_token':'test-token','_fecha':'bad'},405)]
         for method,path,params,expected in cases:
             with self.subTest(path=path,expected=expected):
                 self.assertEqual(self.call(method,path,params=params)[0],expected)
@@ -105,6 +105,7 @@ class EndpointsTest(unittest.TestCase):
         with self.engine.begin() as conn:
             conn.execute(usuarios_c.update().values(FechaExpiracion='2000-01-01 00:00:00'))
         self.assertEqual(self.call('POST','/api/ObtieneToken/',params={'_IdUsuario':'test','_contrasena':'test-password'})[0],406)
+        self.assertEqual(self.call('GET','/api/obtieneEventos/',params={'_token':'test-token','_fecha':'2026-09-01'})[0],406)
 
     def test_wrong_password_does_not_write(self):
         for path, body in [
@@ -133,6 +134,7 @@ class EndpointsTest(unittest.TestCase):
             operation=paths[path][method]
             self.assertNotIn('requestBody',operation)
             self.assertTrue(all(p['in']=='query' and p['required'] for p in operation['parameters']))
+        self.assertEqual([p['name'] for p in paths['/api/obtieneEventos/']['get']['parameters']],['_token','_fecha'])
         date=next(p for p in paths['/api/obtieneEventos/']['get']['parameters'] if p['name']=='_fecha')
         self.assertIn('AAAA-MM-DD',date['description'])
         self.assertEqual(date['schema']['examples'],['2026-09-10'])
@@ -142,11 +144,12 @@ class EndpointsTest(unittest.TestCase):
         self.assertEqual(self.call('PUT','/api/actualizaContrasena/',params=payload)[0],200)
         self.assertEqual(self.call('POST','/api/ObtieneToken/',params={'_IdUsuario':'test','_contrasena':'test-password'})[0],401)
         status,token=self.call('POST','/api/ObtieneToken/',params={'_IdUsuario':'test','_contrasena':'new-password'})
-        self.assertEqual(status,201)
+        self.assertEqual(status,200)
+        token=token['Token']
         self.assertNotEqual(token,'test-token')
-        self.assertEqual(self.call('GET','/api/obtieneEventos/',params={'_IdUsuario':'test','_token':'test-token','_fecha':'2026-09-01'})[0],402)
+        self.assertEqual(self.call('GET','/api/obtieneEventos/',params={'_token':'test-token','_fecha':'2026-09-01'})[0],402)
         self.assertEqual(self.call('PUT','/api/actualizaContrasena/',params=payload)[0],403)
-        self.assertEqual(self.call('POST','/api/ObtieneToken/',params={'_IdUsuario':'test','_contrasena':'new-password'}),(201,token))
+        self.assertEqual(self.call('POST','/api/ObtieneToken/',params={'_IdUsuario':'test','_contrasena':'new-password'}),(200,{'Token':token}))
 
     def test_empty_or_unchanged_password_rejected(self):
         for new in ['', 'test-password']:

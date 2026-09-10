@@ -5,8 +5,8 @@
 | Método | Ruta exacta | Entrada | Éxito |
 |---|---|---|---|
 | PUT | /api/actualizaContrasena/ | Query: _IdUsuario, _contrasenaActual, _contrasenaNueva | 200 y mensaje |
-| POST | /api/ObtieneToken/ | Query: _IdUsuario, _contrasena | 201 y token como cadena JSON |
-| GET | /api/obtieneEventos/ | Query: _IdUsuario, _token, _fecha (YYYY-MM-DD) | 201 y lista de grupos; [] sin datos |
+| POST | /api/ObtieneToken/ | Query: _IdUsuario, _contrasena | 200 y objeto JSON {"Token": "..."} |
+| GET | /api/obtieneEventos/ | Query: _token, _fecha (YYYY-MM-DD) | 200 y lista de grupos; [] sin datos |
 
 ObtieneToken lleva O mayúscula, igual que la captura solicitada. GET /api/obtieneToken/ y PUT /api/actualizaToken/ se conservan en router/router.py, registrados en rutas_desactivadas. main.py NO incluye ese router: no aparecen en Swagger y no aceptan peticiones. No se eliminó ninguna función de endpoint en este ajuste. router/routerOK.py permanece inactivo.
 
@@ -57,12 +57,13 @@ $id = $cred.UserName
 $password = $cred.GetNetworkCredential().Password
 $idUrl = [uri]::EscapeDataString($id)
 $pwdUrl = [uri]::EscapeDataString($password)
-$token = Invoke-RestMethod -Method Post -Uri "$base/api/ObtieneToken/?_IdUsuario=$idUrl&_contrasena=$pwdUrl"
+$respuesta = Invoke-RestMethod -Method Post -Uri "$base/api/ObtieneToken/?_IdUsuario=$idUrl&_contrasena=$pwdUrl"
 
 $idUrl = [uri]::EscapeDataString($id)
+$token = $respuesta.Token
 $tokenUrl = [uri]::EscapeDataString($token)
 $fecha = '2026-09-09' # Usar un día confirmado con datos.
-Invoke-RestMethod "$base/api/obtieneEventos/?_IdUsuario=$idUrl&_token=$tokenUrl&_fecha=$fecha" | ConvertTo-Json -Depth 5
+Invoke-RestMethod "$base/api/obtieneEventos/?_token=$tokenUrl&_fecha=$fecha" | ConvertTo-Json -Depth 5
 
 # Cambia datos: ejecutar solo sobre una cuenta de pruebas.
 $nuevaCred = Get-Credential -UserName $id -Message 'Nueva contraseña de prueba'
@@ -72,7 +73,7 @@ Invoke-RestMethod -Method Put -Uri "$base/api/actualizaContrasena/?_IdUsuario=$i
 # Repetir POST ObtieneToken con la contraseña nueva y consultar eventos con el token nuevo.
 ```
 
-ObtieneToken: usuario inexistente 404, contraseña incorrecta 401, vencimiento 406, faltan parametros query 422. Eventos: usuario inexistente 401, token incorrecto 402, vencido 406, fecha inválida 405, parámetros faltantes 422. Se conservan los códigos heredados salvo el éxito de cambio de contraseña, ahora 200.
+ObtieneToken: usuario inexistente 404, contraseña incorrecta 401, vencimiento 406, faltan parametros query 422. Eventos: token inexistente o incorrecto 402, vencido 406, fecha inválida 405, parámetros faltantes 422. Se conservan los códigos heredados salvo el éxito de cambio de contraseña, ahora 200.
 
 ## Pruebas automatizadas
 
@@ -111,4 +112,11 @@ Los cambios siguen siendo locales; falta desplegarlos y verificar el esquema de 
 
 Se conservan los colores est?ndar: PUT naranja, POST verde y GET azul. Las operaciones aparecen desplegadas y muestran campos query individuales en Parameters; pulsar Try it out para editarlos. Ya no reciben JSON los dos endpoints activos PUT y POST.
 
-_fecha: escribir AAAA-MM-DD, por ejemplo 2026-09-10 para el 10 de septiembre de 2026. Mes y d?a con dos d?gitos, sin hora, barras ni comillas. Swagger muestra esta ayuda y un ejemplo en el propio campo. Se consulta FechaCreacionLocal durante ese d?a completo, excluyendo el siguiente. Sin datos devuelve []. Se conserva _IdUsuario en eventos porque sigue siendo necesario para validar la identidad asociada al token.
+_fecha: escribir AAAA-MM-DD, por ejemplo 2026-09-10 para el 10 de septiembre de 2026. Mes y d?a con dos d?gitos, sin hora, barras ni comillas. Swagger muestra esta ayuda y un ejemplo en el propio campo. Se consulta FechaCreacionLocal durante ese d?a completo, excluyendo el siguiente. Sin datos devuelve []. Eventos solo recibe _token y _fecha. La API identifica al usuario mediante el token almacenado y verifica su expiraci?n; _IdUsuario no se solicita.
+
+
+## Comparaci?n con la API de referencia
+
+Se consult? http://3.225.215.202:8000/openapi.json y se verificaron peticiones reales de lectura. Se igualaron rutas, m?todos, nombres de operaci?n y c?digos de ?xito 200 de los tres endpoints. POST ObtieneToken devuelve {"Token": "..."}; GET obtieneEventos pide ?nicamente _token y _fecha. La referencia devolvi? una lista de 670 grupos para 2026-09-09, con NombreLinea, NombreSeccion, clasif, hora, FechaCreacionLocal y cantidad. Se conserva ese formato de respuesta y la ayuda de fecha a?adida.
+
+Se conservan las correcciones locales de agrupaci?n: FechaCreacionLocal representa el primer registro del grupo y el rango excluye la medianoche siguiente. No se asegura igualdad fila por fila con la consulta antigua. Los errores conservan los c?digos locales documentados; la referencia no especifica esos errores en OpenAPI. Las otras rutas siguen desactivadas, no eliminadas. Falta desplegar el ajuste.

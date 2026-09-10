@@ -73,14 +73,15 @@ try:
     if os.getenv('API_USER') and os.getenv('API_PASSWORD'):
         status, token = get('/api/ObtieneToken/', method='POST', params={'_IdUsuario':os.environ['API_USER'], '_contrasena':os.environ['API_PASSWORD']})
         print('LOCAL_GET_TOKEN_HTTP',status,flush=True)
-        if status != 201:
+        if status != 200:
             print('LOCAL_GET_TOKEN_MESSAGE', token.get('message') if isinstance(token,dict) else 'unexpected response',flush=True)
             raise SystemExit(1)
+        token=token['Token']
         assert isinstance(token,str) and token
         user = {'IdUsuario':os.environ['API_USER'], 'Token':token}
-    status, rows = get('/api/obtieneEventos/', {'_IdUsuario': user['IdUsuario'], '_token': user['Token'], '_fecha': str(start.date())})
+    status, rows = get('/api/obtieneEventos/', {'_token': user['Token'], '_fecha': str(start.date())})
     print('LOCAL_EVENTS_HTTP', status, flush=True)
-    assert status == 201, 'Events endpoint did not succeed'
+    assert status == 200, 'Events endpoint did not succeed'
     actual = sum(row['cantidad'] for row in rows)
     print('GROUPS', len(rows), 'RETURNED_COUNT', actual, 'MATCHES_DATABASE', actual == expected, flush=True)
     assert actual == expected and rows, 'Returned data does not match MySQL'

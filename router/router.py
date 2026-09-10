@@ -21,7 +21,7 @@ def token_expiration(value):
     return value if isinstance(value, datetime) else datetime.fromisoformat(value)
 
 
-@dispositivoAPI.put('/api/actualizaContrasena/', status_code=200, summary='Actualiza contrasena')
+@dispositivoAPI.put('/api/actualizaContrasena/', status_code=200, summary='Actualizacontrasena', operation_id='actualizaContrasena_api_actualizaContrasena__put')
 async def actualiza_contrasena(
     *,
     id_usuario: str = Query(..., alias='_IdUsuario', min_length=1, description='Identificador del usuario de la API.'),
@@ -111,19 +111,21 @@ async def obtiene_token(_IdUsuario: str, _contrasena: str):
         writeFile(_IdUsuario, fecha_y_hora, 'obtiene_token:Error No identificado!!')
         return JSONResponse(content={'message': 'Error No identificado!!'}, status_code=500)
 
-@dispositivoAPI.post('/api/ObtieneToken/', status_code=201, summary='Obtiene token')
+@dispositivoAPI.post('/api/ObtieneToken/', status_code=200, summary='Obtienetoken', operation_id='ObtieneToken_api_ObtieneToken__post')
 async def obtiene_token_post(
     *,
     id_usuario: str = Query(..., alias='_IdUsuario', min_length=1, description='Identificador del usuario de la API.'),
     contrasena: str = Query(..., alias='_contrasena', min_length=1, description='Contrasena del usuario de la API.'),
 ):
     """Devuelve el token vigente. Completa los campos y pulsa Execute para obtener el token vigente."""
-    return await obtiene_token(id_usuario, contrasena)
+    token = await obtiene_token(id_usuario, contrasena)
+    if isinstance(token, JSONResponse):
+        return token
+    return {'Token': token}
 
-@dispositivoAPI.get('/api/obtieneEventos/', status_code=201)
+@dispositivoAPI.get('/api/obtieneEventos/', status_code=200, summary='Obtiene Eventos')
 async def obtiene_eventos(
-    _IdUsuario: str = Query(..., description='Identificador del usuario al que pertenece el token.'),
-    _token: str = Query(..., description='Token devuelto por POST /api/ObtieneToken/. Pegalo sin comillas ni el prefijo Bearer.'),
+    _token: str = Query(..., min_length=1, description='Token devuelto por POST /api/ObtieneToken/. Pegalo sin comillas ni el prefijo Bearer.'),
     _fecha: str = Query(
         ...,
         description=(
@@ -144,13 +146,11 @@ async def obtiene_eventos(
         return JSONResponse(content={'message': 'Error en fecha!!'}, status_code=405)
     try:
         with engine.connect() as conn:
-            datos = conn.execute(usuarios_c.select().where(usuarios_c.c.IdUsuario == _IdUsuario)).first()
-            if datos is None:
-                return JSONResponse(content={'message': 'Usuario no encontrado!!'}, status_code=401)
+            datos = conn.execute(usuarios_c.select().where(usuarios_c.c.Token == _token)).first()
+            if datos is None or datos[3] != _token:
+                return JSONResponse(content={'message': 'Token no valido!!'}, status_code=402)
             if expire_date(0) > token_expiration(datos[4]):
                 return JSONResponse(content={'message': 'Token caducado!!'}, status_code=406)
-            if datos[3] != _token:
-                return JSONResponse(content={'message': 'Token no valido!!'}, status_code=402)
             query = text("""
                 SELECT NombreLinea, NombreSeccion, Accion AS clasif,
                        HOUR(FechaCreacionLocal) AS hora,
@@ -165,7 +165,7 @@ async def obtiene_eventos(
             result = [dict(row) for row in conn.execute(query, {
                 'fecha_inicio': str(fecha_inicio), 'fecha_fin': str(fecha_fin)
             }).mappings().all()]
-        writeFile(_IdUsuario, fecha_y_hora, 'obtiene_eventos:Consulta exitosa')
+        writeFile(datos[0], fecha_y_hora, 'obtiene_eventos:Consulta exitosa')
         return result
     except Exception:
         logger.exception('Error procesando solicitud')
