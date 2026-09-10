@@ -3,7 +3,7 @@ import json
 import os
 import unittest
 from datetime import datetime, timedelta
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from urllib.parse import urlencode
 
 from sqlalchemy import create_engine, event, text
@@ -68,6 +68,25 @@ class EndpointsTest(unittest.TestCase):
         self.assertEqual(len(data),1)
         self.assertEqual(data[0]['cantidad'],2)
         self.assertEqual(data[0]['hora'],10)
+        self.assertEqual(data[0]['FechaCreacionLocal'],'2026-09-01 10:00:00')
+
+    def test_mysql_datetime_uses_legacy_json_format(self):
+        user_result = Mock()
+        user_result.first.return_value = (
+            'test', 'Test', 'unused', 'test-token', datetime.now()+timedelta(days=1)
+        )
+        expected = {'NombreLinea':'linea2', 'NombreSeccion':'Ensamble',
+                    'clasif':'No inspeccionado', 'hora':0,
+                    'FechaCreacionLocal':'2026-09-10 00:00:23', 'cantidad':110}
+        event_result = Mock()
+        event_result.mappings.return_value.all.return_value = [
+            {**expected, 'FechaCreacionLocal':datetime(2026,9,10,0,0,23,123456)}
+        ]
+        with patch.object(router.engine,'connect') as connect:
+            connect.return_value.__enter__.return_value.execute.side_effect = [user_result,event_result]
+            status,data=self.call('GET','/api/obtieneEventos/',params={'_token':'test-token','_fecha':'2026-09-10'})
+        self.assertEqual(status,200)
+        self.assertEqual(data,[expected])
 
     def test_no_events(self):
         status,data=self.call('GET','/api/obtieneEventos/',params={'_token':'test-token','_fecha':'2020-01-01'})

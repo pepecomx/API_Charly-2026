@@ -165,6 +165,12 @@ async def obtiene_eventos(
             result = [dict(row) for row in conn.execute(query, {
                 'fecha_inicio': str(fecha_inicio), 'fecha_fin': str(fecha_fin)
             }).mappings().all()]
+            # Preserve the legacy JSON format instead of FastAPI's ISO datetime.
+            for row in result:
+                fecha = row['FechaCreacionLocal']
+                if isinstance(fecha, str):
+                    fecha = datetime.fromisoformat(fecha)
+                row['FechaCreacionLocal'] = fecha.strftime('%Y-%m-%d %H:%M:%S')
         writeFile(datos[0], fecha_y_hora, 'obtiene_eventos:Consulta exitosa')
         return result
     except Exception:
