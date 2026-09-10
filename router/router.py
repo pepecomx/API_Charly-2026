@@ -1,6 +1,6 @@
 import logging
 from sqlalchemy import text
-from fastapi import APIRouter, Body
+from fastapi import APIRouter, Body, Query
 from fastapi.responses import JSONResponse
 from jwt_file.function_jwt import expire_date, writeFile
 from router.local import key
@@ -24,9 +24,9 @@ def token_expiration(value):
 @dispositivoAPI.put('/api/actualizaContrasena/', status_code=200, summary='Actualiza contrasena')
 async def actualiza_contrasena(
     *,
-    id_usuario: str = Body(..., alias='_IdUsuario', min_length=1),
-    contrasena_actual: str = Body(..., alias='_contrasenaActual', min_length=1),
-    contrasena_nueva: str = Body(..., alias='_contrasenaNueva', min_length=1),
+    id_usuario: str = Query(..., alias='_IdUsuario', min_length=1, description='Identificador del usuario de la API.'),
+    contrasena_actual: str = Query(..., alias='_contrasenaActual', min_length=1, description='Contrasena actual del usuario.'),
+    contrasena_nueva: str = Query(..., alias='_contrasenaNueva', min_length=1, description='Nueva contrasena; debe ser diferente de la actual.'),
 ):
     """Cambia la contrasena verificando la actual e invalida el token anterior."""
     fecha_y_hora = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -114,14 +114,28 @@ async def obtiene_token(_IdUsuario: str, _contrasena: str):
 @dispositivoAPI.post('/api/ObtieneToken/', status_code=201, summary='Obtiene token')
 async def obtiene_token_post(
     *,
-    id_usuario: str = Body(..., alias='_IdUsuario', min_length=1),
-    contrasena: str = Body(..., alias='_contrasena', min_length=1),
+    id_usuario: str = Query(..., alias='_IdUsuario', min_length=1, description='Identificador del usuario de la API.'),
+    contrasena: str = Query(..., alias='_contrasena', min_length=1, description='Contrasena del usuario de la API.'),
 ):
-    """Devuelve el token vigente. Las credenciales se reciben en JSON."""
+    """Devuelve el token vigente. Completa los campos y pulsa Execute para obtener el token vigente."""
     return await obtiene_token(id_usuario, contrasena)
 
 @dispositivoAPI.get('/api/obtieneEventos/', status_code=201)
-async def obtiene_eventos(_IdUsuario: str, _token: str, _fecha: str):
+async def obtiene_eventos(
+    _IdUsuario: str = Query(..., description='Identificador del usuario al que pertenece el token.'),
+    _token: str = Query(..., description='Token devuelto por POST /api/ObtieneToken/. Pegalo sin comillas ni el prefijo Bearer.'),
+    _fecha: str = Query(
+        ...,
+        description=(
+            'Fecha del dia a consultar en formato **AAAA-MM-DD** (ano-mes-dia). '
+            'Ejemplo: **2026-09-10** = 10 de septiembre de 2026. '
+            'Usa guiones y dos digitos para mes y dia; no incluyas hora, barras ni comillas. '
+            'Consulta el dia completo segun FechaCreacionLocal, sin incluir el dia siguiente. '
+            'Si no hay eventos para esa fecha, se devuelve una lista vacia [].'
+        ),
+        examples=['2026-09-10'],
+    ),
+):
     fecha_y_hora = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     try:
         fecha_inicio = datetime.strptime(_fecha, '%Y-%m-%d')

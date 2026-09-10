@@ -56,12 +56,11 @@ try:
     if not server.started:
         raise RuntimeError('Local HTTP server did not start')
 
-    def get(path, params=None, body=None):
+    def get(path, params=None, method="GET"):
         url = f'http://127.0.0.1:{port}{path}'
         if params:
             url += '?' + urlencode(params)
-        if body is not None:
-            url = Request(url, data=json.dumps(body).encode(), headers={'Content-Type':'application/json'}, method='POST')
+        url = Request(url, method=method)
         try:
             with urlopen(url, timeout=40) as response:
                 return response.status, json.load(response)
@@ -72,7 +71,7 @@ try:
     print('LOCAL_OPENAPI', status, 'ENDPOINTS', len(schema.get('paths',{})), flush=True)
     assert status == 200
     if os.getenv('API_USER') and os.getenv('API_PASSWORD'):
-        status, token = get('/api/ObtieneToken/', body={'_IdUsuario':os.environ['API_USER'], '_contrasena':os.environ['API_PASSWORD']})
+        status, token = get('/api/ObtieneToken/', method='POST', params={'_IdUsuario':os.environ['API_USER'], '_contrasena':os.environ['API_PASSWORD']})
         print('LOCAL_GET_TOKEN_HTTP',status,flush=True)
         if status != 201:
             print('LOCAL_GET_TOKEN_MESSAGE', token.get('message') if isinstance(token,dict) else 'unexpected response',flush=True)
@@ -86,7 +85,7 @@ try:
     print('GROUPS', len(rows), 'RETURNED_COUNT', actual, 'MATCHES_DATABASE', actual == expected, flush=True)
     assert actual == expected and rows, 'Returned data does not match MySQL'
     print('JSON_FIELDS', sorted(rows[0]), flush=True)
-    status, _ = get('/api/ObtieneToken/', body={'_IdUsuario':'diagnostico_inexistente_20260910','_contrasena':'not-real'})
+    status, _ = get('/api/ObtieneToken/', method='POST', params={'_IdUsuario':'diagnostico_inexistente_20260910','_contrasena':'not-real'})
     print('LOCAL_UNKNOWN_USER_HTTP',status,flush=True)
     assert status == 404
     # Verify both PUT routes without changing the remote account.
@@ -95,7 +94,7 @@ try:
             
             ('/api/actualizaContrasena/', {'_IdUsuario':os.environ['API_USER'], '_contrasenaActual':os.environ['API_PASSWORD']+'-incorrecta', '_contrasenaNueva':'not-applied'}),
         ]:
-            req = Request(f'http://127.0.0.1:{port}{path}', data=json.dumps(body).encode(), headers={'Content-Type':'application/json'}, method='PUT')
+            req = Request(f'http://127.0.0.1:{port}{path}?'+urlencode(body), method='PUT')
             try:
                 with urlopen(req,timeout=40) as response:
                     status=response.status

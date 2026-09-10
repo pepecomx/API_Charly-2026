@@ -9,7 +9,7 @@ from router.router import dispositivoAPI
 
 
 
-app=FastAPI()
+app=FastAPI(swagger_ui_parameters={"docExpansion": "full"})
 #load_dotenv()
 
 #app.include_router(user)

@@ -58,7 +58,7 @@ class EndpointsTest(unittest.TestCase):
         return asyncio.run(request(method, path, **kwargs))
 
     def test_get_token(self):
-        status, data = self.call('POST','/api/ObtieneToken/',body={'_IdUsuario':'test','_contrasena':'test-password'})
+        status, data = self.call('POST','/api/ObtieneToken/',params={'_IdUsuario':'test','_contrasena':'test-password'})
         self.assertEqual(status,201)
         self.assertEqual(data,'test-token')
 
@@ -81,10 +81,10 @@ class EndpointsTest(unittest.TestCase):
             token=conn.execute(usuarios_c.select()).mappings().one()['Token']
         self.assertIsInstance(token,str)
         self.assertNotEqual(token,'test-token')
-        self.assertEqual(self.call('POST','/api/ObtieneToken/',body={'_IdUsuario':'test','_contrasena':'test-password'}),(201,token))
+        self.assertEqual(self.call('POST','/api/ObtieneToken/',params={'_IdUsuario':'test','_contrasena':'test-password'}),(201,token))
 
     def test_update_password_persists(self):
-        status,_=self.call('PUT','/api/actualizaContrasena/',body={'_IdUsuario':'test','_contrasenaActual':'test-password','_contrasenaNueva':'new-password'})
+        status,_=self.call('PUT','/api/actualizaContrasena/',params={'_IdUsuario':'test','_contrasenaActual':'test-password','_contrasenaNueva':'new-password'})
         self.assertEqual(status,200)
         with self.engine.connect() as conn:
             password=conn.execute(usuarios_c.select()).mappings().one()['Contrasena']
@@ -97,14 +97,14 @@ class EndpointsTest(unittest.TestCase):
                ('GET','/api/obtieneEventos/',{'_IdUsuario':'test','_token':'test-token','_fecha':'bad'},405)]
         for method,path,params,expected in cases:
             with self.subTest(path=path,expected=expected):
-                self.assertEqual(self.call(method,path,**({'body':params} if method == 'POST' else {'params':params}))[0],expected)
-        self.assertEqual(self.call('PUT','/api/actualizaToken/',body={})[0],404)
-        self.assertEqual(self.call('PUT','/api/actualizaContrasena/',body={})[0],422)
+                self.assertEqual(self.call(method,path,params=params)[0],expected)
+        self.assertEqual(self.call('PUT','/api/actualizaToken/',params={})[0],404)
+        self.assertEqual(self.call('PUT','/api/actualizaContrasena/',params={})[0],422)
 
     def test_expired_token(self):
         with self.engine.begin() as conn:
             conn.execute(usuarios_c.update().values(FechaExpiracion='2000-01-01 00:00:00'))
-        self.assertEqual(self.call('POST','/api/ObtieneToken/',body={'_IdUsuario':'test','_contrasena':'test-password'})[0],406)
+        self.assertEqual(self.call('POST','/api/ObtieneToken/',params={'_IdUsuario':'test','_contrasena':'test-password'})[0],406)
 
     def test_wrong_password_does_not_write(self):
         for path, body in [
@@ -112,7 +112,7 @@ class EndpointsTest(unittest.TestCase):
             ('/api/actualizaContrasena/', {'_IdUsuario':'test','_contrasenaActual':'bad','_contrasenaNueva':'new'}),
         ]:
             with self.subTest(path=path):
-                self.assertEqual(self.call('PUT',path,body=body)[0],403)
+                self.assertEqual(self.call('PUT',path,params=body)[0],403)
         with self.engine.connect() as conn:
             row=conn.execute(usuarios_c.select()).mappings().one()
         self.assertEqual(row['Token'],'test-token')
@@ -124,28 +124,38 @@ class EndpointsTest(unittest.TestCase):
             ('/api/actualizaContrasena/','put'), ('/api/ObtieneToken/','post'), ('/api/obtieneEventos/','get')})
         self.assertEqual(self.call('GET','/api/obtieneToken/')[0],404)
         self.assertEqual(self.call('GET','/api/ObtieneToken/')[0],405)
-        self.assertEqual(self.call('POST','/api/ObtieneToken/',params={'_IdUsuario':'test','_contrasena':'test-password'})[0],422)
+        self.assertEqual(self.call('POST','/api/ObtieneToken/',body={'_IdUsuario':'test','_contrasena':'test-password'})[0],422)
         self.assertEqual(len(router.rutas_desactivadas.routes),2)
+
+    def test_swagger_individual_fields_and_date_help(self):
+        paths=app.openapi()['paths']
+        for path,method in [('/api/actualizaContrasena/','put'),('/api/ObtieneToken/','post'),('/api/obtieneEventos/','get')]:
+            operation=paths[path][method]
+            self.assertNotIn('requestBody',operation)
+            self.assertTrue(all(p['in']=='query' and p['required'] for p in operation['parameters']))
+        date=next(p for p in paths['/api/obtieneEventos/']['get']['parameters'] if p['name']=='_fecha')
+        self.assertIn('AAAA-MM-DD',date['description'])
+        self.assertEqual(date['schema']['examples'],['2026-09-10'])
 
     def test_password_change_invalidates_old_credentials(self):
         payload={'_IdUsuario':'test','_contrasenaActual':'test-password','_contrasenaNueva':'new-password'}
-        self.assertEqual(self.call('PUT','/api/actualizaContrasena/',body=payload)[0],200)
-        self.assertEqual(self.call('POST','/api/ObtieneToken/',body={'_IdUsuario':'test','_contrasena':'test-password'})[0],401)
-        status,token=self.call('POST','/api/ObtieneToken/',body={'_IdUsuario':'test','_contrasena':'new-password'})
+        self.assertEqual(self.call('PUT','/api/actualizaContrasena/',params=payload)[0],200)
+        self.assertEqual(self.call('POST','/api/ObtieneToken/',params={'_IdUsuario':'test','_contrasena':'test-password'})[0],401)
+        status,token=self.call('POST','/api/ObtieneToken/',params={'_IdUsuario':'test','_contrasena':'new-password'})
         self.assertEqual(status,201)
         self.assertNotEqual(token,'test-token')
         self.assertEqual(self.call('GET','/api/obtieneEventos/',params={'_IdUsuario':'test','_token':'test-token','_fecha':'2026-09-01'})[0],402)
-        self.assertEqual(self.call('PUT','/api/actualizaContrasena/',body=payload)[0],403)
-        self.assertEqual(self.call('POST','/api/ObtieneToken/',body={'_IdUsuario':'test','_contrasena':'new-password'}),(201,token))
+        self.assertEqual(self.call('PUT','/api/actualizaContrasena/',params=payload)[0],403)
+        self.assertEqual(self.call('POST','/api/ObtieneToken/',params={'_IdUsuario':'test','_contrasena':'new-password'}),(201,token))
 
     def test_empty_or_unchanged_password_rejected(self):
         for new in ['', 'test-password']:
-            self.assertEqual(self.call('PUT','/api/actualizaContrasena/',body={'_IdUsuario':'test','_contrasenaActual':'test-password','_contrasenaNueva':new})[0],422)
+            self.assertEqual(self.call('PUT','/api/actualizaContrasena/',params={'_IdUsuario':'test','_contrasenaActual':'test-password','_contrasenaNueva':new})[0],422)
 
     def test_connection_failure_returns_json(self):
         with patch.object(router.engine,'connect',side_effect=RuntimeError('DB unavailable')):
             with self.assertLogs(router.logger,level='ERROR'):
-                status,data=self.call('POST','/api/ObtieneToken/',body={'_IdUsuario':'test','_contrasena':'test-password'})
+                status,data=self.call('POST','/api/ObtieneToken/',params={'_IdUsuario':'test','_contrasena':'test-password'})
         self.assertEqual(status,500)
         self.assertIn('message',data)
 

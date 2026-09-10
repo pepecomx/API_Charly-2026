@@ -1,11 +1,11 @@
-﻿# API Charly: contrato activo y pruebas
+# API Charly: contrato activo y pruebas
 
 ## Endpoints activos
 
 | Método | Ruta exacta | Entrada | Éxito |
 |---|---|---|---|
-| PUT | /api/actualizaContrasena/ | JSON: _IdUsuario, _contrasenaActual, _contrasenaNueva | 200 y mensaje |
-| POST | /api/ObtieneToken/ | JSON: _IdUsuario, _contrasena | 201 y token como cadena JSON |
+| PUT | /api/actualizaContrasena/ | Query: _IdUsuario, _contrasenaActual, _contrasenaNueva | 200 y mensaje |
+| POST | /api/ObtieneToken/ | Query: _IdUsuario, _contrasena | 201 y token como cadena JSON |
 | GET | /api/obtieneEventos/ | Query: _IdUsuario, _token, _fecha (YYYY-MM-DD) | 201 y lista de grupos; [] sin datos |
 
 ObtieneToken lleva O mayúscula, igual que la captura solicitada. GET /api/obtieneToken/ y PUT /api/actualizaToken/ se conservan en router/router.py, registrados en rutas_desactivadas. main.py NO incluye ese router: no aparecen en Swagger y no aceptan peticiones. No se eliminó ninguna función de endpoint en este ajuste. router/routerOK.py permanece inactivo.
@@ -16,14 +16,14 @@ El POST reutiliza la lógica existente para obtener un token vigente. No lo renu
 
 Se mantiene PUT para establecer una nueva contraseña. La operación actualiza un recurso existente, por lo que devuelve 200 con mensaje, no 201 Created. Referencia: [RFC 9110, PUT](https://www.rfc-editor.org/rfc/rfc9110.html#name-put).
 
-- Recibe las credenciales en JSON, no en la URL.
+- Muestra campos individuales de Parameters en Swagger mediante query, como en las capturas. Las credenciales viajan en la URL y pueden aparecer en registros de acceso.
 - Valida la contraseña actual y rechaza la nueva si está vacía o es igual a la anterior.
 - Bloquea la fila durante el cambio en MySQL y guarda contraseña, token y expiración en una sola actualización y transacción.
 - Invalida el token anterior. Tras cambiar la contraseña, solicitar el token con POST /api/ObtieneToken/ usando la nueva.
 - Repetir la petición con la contraseña anterior devuelve 403 y no vuelve a cambiar el token.
 - Se conserva el almacenamiento Fernet existente por compatibilidad; esta revisión no migra el formato de contraseñas ni constituye una auditoría completa de seguridad.
 
-Ejemplo del cuerpo (valores ficticios):
+Ejemplo de los campos que hay que completar (valores ficticios; no enviar como cuerpo JSON):
 
 ```json
 {
@@ -55,8 +55,9 @@ $base = 'http://127.0.0.1:8000'
 $cred = Get-Credential -Message 'Cuenta de pruebas API'
 $id = $cred.UserName
 $password = $cred.GetNetworkCredential().Password
-$body = @{_IdUsuario=$id; _contrasena=$password} | ConvertTo-Json
-$token = Invoke-RestMethod -Method Post -Uri "$base/api/ObtieneToken/" -ContentType 'application/json' -Body $body
+$idUrl = [uri]::EscapeDataString($id)
+$pwdUrl = [uri]::EscapeDataString($password)
+$token = Invoke-RestMethod -Method Post -Uri "$base/api/ObtieneToken/?_IdUsuario=$idUrl&_contrasena=$pwdUrl"
 
 $idUrl = [uri]::EscapeDataString($id)
 $tokenUrl = [uri]::EscapeDataString($token)
@@ -66,12 +67,12 @@ Invoke-RestMethod "$base/api/obtieneEventos/?_IdUsuario=$idUrl&_token=$tokenUrl&
 # Cambia datos: ejecutar solo sobre una cuenta de pruebas.
 $nuevaCred = Get-Credential -UserName $id -Message 'Nueva contraseña de prueba'
 $nueva = $nuevaCred.GetNetworkCredential().Password
-$body = @{_IdUsuario=$id; _contrasenaActual=$password; _contrasenaNueva=$nueva} | ConvertTo-Json
-Invoke-RestMethod -Method Put -Uri "$base/api/actualizaContrasena/" -ContentType 'application/json' -Body $body
+$nuevaUrl = [uri]::EscapeDataString($nueva)
+Invoke-RestMethod -Method Put -Uri "$base/api/actualizaContrasena/?_IdUsuario=$idUrl&_contrasenaActual=$pwdUrl&_contrasenaNueva=$nuevaUrl"
 # Repetir POST ObtieneToken con la contraseña nueva y consultar eventos con el token nuevo.
 ```
 
-ObtieneToken: usuario inexistente 404, contraseña incorrecta 401, vencimiento 406, falta JSON 422. Eventos: usuario inexistente 401, token incorrecto 402, vencido 406, fecha inválida 405, parámetros faltantes 422. Se conservan los códigos heredados salvo el éxito de cambio de contraseña, ahora 200.
+ObtieneToken: usuario inexistente 404, contraseña incorrecta 401, vencimiento 406, faltan parametros query 422. Eventos: usuario inexistente 401, token incorrecto 402, vencido 406, fecha inválida 405, parámetros faltantes 422. Se conservan los códigos heredados salvo el éxito de cambio de contraseña, ahora 200.
 
 ## Pruebas automatizadas
 
@@ -79,7 +80,7 @@ ObtieneToken: usuario inexistente 404, contraseña incorrecta 401, vencimiento 4
 & 'C:\AMBIENTES_VIRTUALES_PYTHON\env_api_charly\Scripts\python.exe' -m unittest discover -s tests -v
 ```
 
-Resultado del ajuste a tres endpoints: 12 pruebas correctas. Incluyen el esquema exacto, bloqueo HTTP de las rutas desactivadas, JSON obligatorio en POST, eventos, persistencia, expiración, contraseña incorrecta, contraseña vacía, repetición de cambio e invalidación del token anterior. actualiza_token se sigue probando como función preservada, sin publicarlo por HTTP. Las pruebas usan SQLite en memoria; no escriben en MySQL remoto.
+Resultado del ajuste a tres endpoints: 13 pruebas correctas. Incluyen el esquema exacto, bloqueo HTTP de las rutas desactivadas, parametros query obligatorios en POST, eventos, persistencia, expiración, contraseña incorrecta, contraseña vacía, repetición de cambio e invalidación del token anterior. actualiza_token se sigue probando como función preservada, sin publicarlo por HTTP. Las pruebas usan SQLite en memoria; no escriben en MySQL remoto.
 
 Para repetir la integración con MySQL real y un servidor HTTP local temporal:
 
@@ -104,3 +105,10 @@ Con la misma cuenta y fecha, la API local corregida devolvió 201 para token y e
 El despliegue en 3.209.38.82:8008 devolvió 201 al obtener token y 500 con Error No identificado!! al consultar eventos. Eso demostró que había datos y credenciales válidas. Se corrigieron ejecución SQL para SQLAlchemy 2, transacciones sin commit y serialización de resultados. MySQL remoto usa NO_ENGINE_SUBSTITUTION; ONLY_FULL_GROUP_BY no era la causa actual.
 
 Los cambios siguen siendo locales; falta desplegarlos y verificar el esquema de tres endpoints en Coolify. No se ejecutaron cambios de contraseña ni renovaciones exitosas en la base remota.
+
+
+## Presentaci?n de Swagger y ayuda de fecha
+
+Se conservan los colores est?ndar: PUT naranja, POST verde y GET azul. Las operaciones aparecen desplegadas y muestran campos query individuales en Parameters; pulsar Try it out para editarlos. Ya no reciben JSON los dos endpoints activos PUT y POST.
+
+_fecha: escribir AAAA-MM-DD, por ejemplo 2026-09-10 para el 10 de septiembre de 2026. Mes y d?a con dos d?gitos, sin hora, barras ni comillas. Swagger muestra esta ayuda y un ejemplo en el propio campo. Se consulta FechaCreacionLocal durante ese d?a completo, excluyendo el siguiente. Sin datos devuelve []. Se conserva _IdUsuario en eventos porque sigue siendo necesario para validar la identidad asociada al token.
