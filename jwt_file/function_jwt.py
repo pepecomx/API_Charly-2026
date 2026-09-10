@@ -1,6 +1,7 @@
 from jwt import encode, decode
 from jwt import exceptions
 from datetime import datetime, timedelta
+import logging
 #from os import getenv
 from fastapi.responses import JSONResponse
 
@@ -36,9 +37,8 @@ def validate_token(token, output=False):
     
 
 def writeFile(usuario:str,fecha:str,message:str):
-#def writeFile(message:str):
-    with open('logApi.txt', 'a') as the_file:
-        the_file.write(usuario+"_" + fecha+"_" + message + '\n')
+    # Container logs are visible in Coolify and do not require writable files.
+    logging.getLogger("uvicorn.error").info("%s_%s_%s", usuario, fecha, message)
 
 
 '''
